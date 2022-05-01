@@ -1,0 +1,35 @@
+function move-FilesToZip($parentDirectory,$filesDaysOlderThan,$zipFile,$allFiles=$false,$recurse=$false,$verbose=$true){
+    # Fastest way to list all files in a directory
+    if($allFiles -and $recurse){
+        $getFiles = "cmd.exe /C dir '$parentDirectory' /S /B /W /A:-D"   
+        $filesToCompress = Invoke-Expression -Command:$getFiles
+    }else{
+        $filesToCompress=(gci $parentDirectory|?{!$_.PSIsContainer -and ($_.LastWriteTime -lt (Get-Date).AddDays(-$filesDaysOlderThan))}).FullName
+        }
+ 
+    if(!(test-path $zipFile)){
+        #New-Item -Name $zipFile -ItemType File -Force # cannot create file with this extension using command
+        $fileIo=[System.IO.File]::Create($zipFile) # invoke dotnet to overcome PShell filetype checking
+        $fileIo.Close()
+        } 
+    Add-Type -Assembly 'System.IO.Compression.FileSystem' #including .NET 4.5 assembly
+    $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
+    $zipIo = [System.IO.Compression.ZipFile]::Open($zipFile, 'update')
+    foreach ($file in $filesToCompress){
+        #$fileFullPath=$file.FullName
+        #$fileName=$file.Name
+        write-host "Moving $file into zip..."
+        try{
+            # Compress-Archive -Path $filePath -Update -DestinationPath $zipFile -ea Stop # requires PowerShell 5.0
+            #if ($file -notin $zipIo.Entries ){
+                $null=[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipIo,$file,$(split-path $file -leaf),$compressionLevel)
+                remove-item $file -Force
+            #}else{
+            #    write-warning "$file already exists within zip file"
+            #    }
+        }catch{
+            Write-Warning $Error[0].exception.message
+            }
+    }
+    $zipIo.Dispose()
+}
